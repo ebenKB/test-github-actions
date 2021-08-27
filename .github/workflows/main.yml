@@ -7,11 +7,8 @@ on:
   # Triggers the workflow on push or pull request events but only for the main branch
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
 
-  # Allows you to run this workflow manually from the Actions tab
-  workflow_dispatch:
+
 
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
@@ -22,15 +19,54 @@ jobs:
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
+      - name: Get yarn cache directory path
+        id: yarn-cache-dir-path
+        run: echo "::set-output name=dir::$(yarn cache dir)"
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: echo Hello, world!
+      - uses: actions/cache@v2
+        id: yarn-cache # use this to check for `cache-hit` (`steps.yarn-cache.outputs.cache-hit != 'true'`)
+        with:
+          path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
+          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-
 
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
-        run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+      - name: Clone repository
+        uses: actions/checkout@v2
+      
+      - name: Uses nodesjs
+        uses: actions/setup-node@v1
+      
+      - name: Install dependencies
+        run: yarn install --silent
+
+      
+      - name: Generate a build
+        run: yarn build --silent
+
+      - name: Share artifact inside workflow
+        uses: actions/upload-artifact@v1
+        with:
+          name: build
+          path: build
+      
+      # deploy the files to the server
+      - name: Get copy of repo
+        uses: actions/checkout@master
+  
+      - name: Get the artifact
+        uses: actions/download-artifact@v1
+        with:
+          name: build
+      
+      # copy the build files to the server
+      - name: Copy files to server
+        uses: appleboy/scp-action@master
+      
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ secrets.SERVER_PORT }}
+          source: "build/*"
+          target: ${{ secrets.PROJECT_PATH }}
